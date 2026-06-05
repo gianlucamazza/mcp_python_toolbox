@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/gianlucamazza-mcp-python-toolbox-badge.png)](https://mseep.ai/app/gianlucamazza-mcp-python-toolbox)
+
 # MCP Python Toolbox
 
 A Model Context Protocol (MCP) server that provides a comprehensive set of tools for Python development, enabling AI assistants like Claude to effectively work with Python code and projects.
