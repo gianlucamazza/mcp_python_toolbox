@@ -1,6 +1,5 @@
 import ast
 import json
-import os
 import subprocess
 import sys
 from typing import List, Dict, Any, Optional, Union, TypedDict, cast
@@ -38,53 +37,6 @@ class CodeAnalyzer:
             workspace_root: Path to the workspace root directory
         """
         self.workspace_root = Path(workspace_root).resolve()
-        self._file_mtimes: Dict[str, float] = {}  # Track file modification times
-
-    def _clear_module_cache(self, file_path: Path) -> None:
-        """Clear Python module cache for the given file to ensure fresh imports.
-
-        Args:
-            file_path: Path to the Python file to clear from cache
-        """
-        # Convert file path to module name
-        try:
-            relative_path = file_path.relative_to(self.workspace_root)
-            module_name = str(relative_path.with_suffix('')).replace(os.sep, '.')
-
-            # Remove from sys.modules if present
-            modules_to_remove = []
-            for mod_name in sys.modules:
-                if mod_name == module_name or mod_name.startswith(f"{module_name}."):
-                    modules_to_remove.append(mod_name)
-
-            for mod_name in modules_to_remove:
-                del sys.modules[mod_name]
-
-        except (ValueError, KeyError):
-            # File not in workspace or module not in cache
-            pass
-
-    def _file_changed(self, file_path: Path) -> bool:
-        """Check if file has been modified since last check.
-
-        Args:
-            file_path: Path to check for modifications
-
-        Returns:
-            True if file has been modified or is new, False otherwise
-        """
-        file_str = str(file_path)
-        try:
-            current_mtime = file_path.stat().st_mtime
-            last_mtime = self._file_mtimes.get(file_str, 0)
-
-            if current_mtime > last_mtime:
-                self._file_mtimes[file_str] = current_mtime
-                return True
-            return False
-        except OSError:
-            # File doesn't exist or can't be accessed
-            return True
 
     def parse_python_file(self, file_path: Union[str, Path]) -> CodeAnalysis:
         """Parse a Python file and return its structure.
@@ -238,7 +190,7 @@ class CodeAnalyzer:
             List of dictionaries containing lint issues with keys:
             - path: File path where the issue was found
             - line: Line number of the issue
-            - type: Type of the issue (numeric severity)
+            - type: pylint category string (convention, refactor, warning, error, fatal)
             - message: Detailed description of the issue
         """
         path = Path(file_path).resolve()
