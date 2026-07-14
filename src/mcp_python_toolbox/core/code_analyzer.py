@@ -1,11 +1,11 @@
 import ast
+import json
+import subprocess
+import sys
 from typing import List, Dict, Any, Optional, Union, TypedDict, cast
 from pathlib import Path
 import autopep8  # type: ignore
 import black  # type: ignore
-from pylint.lint import Run
-from pylint.reporters.text import TextReporter
-from io import StringIO
 
 class CodeAnalysis(TypedDict):
     """Structure containing the analysis results of a Python file.
@@ -180,6 +180,12 @@ class CodeAnalyzer:
     def lint_code(self, file_path: Union[str, Path]) -> List[Dict[str, Any]]:
         """Run pylint on a Python file and return the results.
 
+        Pylint is invoked in a fresh subprocess with JSON output. Running it
+        out-of-process gives every invocation a clean ``astroid`` module cache,
+        so re-linting a file after it has been modified reflects the new
+        contents instead of stale cached results. The JSON reporter also avoids
+        the fragile colon-splitting that broke on Windows-style paths.
+
         Args:
             file_path: Path to the Python file to lint
 
@@ -187,27 +193,73 @@ class CodeAnalyzer:
             List of dictionaries containing lint issues with keys:
             - path: File path where the issue was found
             - line: Line number of the issue
-            - type: Type of the issue
-            - message: Detailed description of the issue
+            - type: Pylint category of the issue (e.g. "convention",
+              "warning", "error", "refactor")
+            - message: Message identifier followed by its description
         """
-        path = Path(file_path)
-        pylint_output = StringIO()
-        Run(
-            [str(path)],
-            reporter=TextReporter(pylint_output),
-            exit=False
-        )
-        
-        issues = []
-        for line in pylint_output.getvalue().splitlines():
-            if ':' in line:
-                parts = line.split(':')
-                if len(parts) >= 3:
-                    issues.append({
-                        'path': parts[0],
-                        'line': parts[1],
-                        'type': parts[2],
-                        'message': ':'.join(parts[3:]).strip()
-                    })
-        
-        return issues 
+        path = Path(file_path).resolve()
+
+        if not path.exists():
+            return [{
+                'path': str(path),
+                'line': '1',
+                'type': 'error',
+                'message': f"File not found: {path}"
+            }]
+
+        cmd = [
+            sys.executable, '-m', 'pylint',
+            '--output-format=json',
+            '--reports=n',
+            '--score=n',
+            str(path)
+        ]
+
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                cwd=str(self.workspace_root),
+                timeout=30
+            )
+        except subprocess.TimeoutExpired:
+            return [{
+                'path': str(path),
+                'line': '1',
+                'type': 'error',
+                'message': "Pylint timed out after 30 seconds"
+            }]
+        except subprocess.SubprocessError as exc:
+            return [{
+                'path': str(path),
+                'line': '1',
+                'type': 'error',
+                'message': f"Pylint subprocess error: {exc}"
+            }]
+
+        output = result.stdout.strip()
+        if not output:
+            return []
+
+        try:
+            pylint_results = json.loads(output)
+        except json.JSONDecodeError:
+            return [{
+                'path': str(path),
+                'line': '1',
+                'type': 'error',
+                'message': f"Failed to parse pylint output: {output[:200]}"
+            }]
+
+        issues: List[Dict[str, Any]] = []
+        for issue in pylint_results:
+            message_id = issue.get('message-id', 'unknown')
+            issues.append({
+                'path': issue.get('path', str(path)),
+                'line': str(issue.get('line', 1)),
+                'type': str(issue.get('type', 'unknown')),
+                'message': f"{message_id}: {issue.get('message', 'No message')}"
+            })
+
+        return issues
