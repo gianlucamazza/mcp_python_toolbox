@@ -47,17 +47,21 @@ Start the server against a workspace directory. A connected MCP client can then:
 - Write the snippet to a temp file and run it with `subprocess`
 - Uses the workspace `.venv` Python if that interpreter exists
 - Capture stdout, stderr, and exit codes
-- Optional working directory (not checked against the workspace root)
-- No timeout, resource limits, or isolation
+- Optional working directory, validated with the same resolve-and-reject check as `FileOperations` (default: workspace root; symlink escapes are rejected)
+- Configurable timeout (default 30s, max 300s); on expiry the process group is killed and any partial stdout/stderr is returned
+- Still unsandboxed: same user permissions, filesystem and network access, no resource limits beyond the timeout
 
 ## Security
 
-There is no sandbox. The server and every tool run with the same OS user and permissions as the process that started it. There are no containers, seccomp filters, resource limits, import allowlists, or network restrictions. Use this only with MCP clients and workspaces you trust.
+There is no sandbox. The server and every tool run with the same OS user and permissions as the process that started it. There are no containers, seccomp filters, import allowlists, or network restrictions. Use this only with MCP clients and workspaces you trust.
 
 What the code actually enforces:
 
 - `read_file`, `write_file`, `delete_file`, and `list_directory` resolve paths and reject those outside the workspace root. Analyze/lint/format do not use that check.
-- `execute_python` is unsandboxed host execution: a temp `.py` file plus `subprocess.run` on the workspace `.venv` interpreter. The snippet can read or write anywhere that user can, start processes, and use the network. The optional `working_dir` is not workspace-checked.
+- `execute_python` is still unsandboxed host execution: a temp `.py` file plus a subprocess on the workspace `.venv` interpreter. The snippet can read or write anywhere that user can, start processes, and use the network. Two guards exist and nothing more:
+  - **Timeout** (default 30 seconds; `--execute-timeout`, the `MCP_PYTHON_EXECUTE_TIMEOUT` environment variable, or a per-call `timeout` argument, capped at 300 seconds). On expiry the whole process group is killed and any partial stdout/stderr is returned in a structured error.
+  - **`working_dir`** is resolved with the same workspace check `FileOperations` uses. Paths that resolve outside the workspace — including symlink escapes — are rejected. The default is the workspace root.
+- There are no other resource limits (CPU, memory, open files, or network).
 - `create_venv` and `install_dependencies` can create `.venv` and install packages into it with pip.
 
 Do not expose the server to untrusted clients, and do not point `--workspace` at a tree you are unwilling to let an assistant modify or execute code from.
@@ -95,6 +99,10 @@ python -m mcp_python_toolbox
 
 # Or specify a workspace directory
 python -m mcp_python_toolbox --workspace /path/to/your/project
+
+# Optional: default execute_python timeout in seconds (default 30, max 300)
+python -m mcp_python_toolbox --execute-timeout 30
+# or: export MCP_PYTHON_EXECUTE_TIMEOUT=30
 ```
 
 ### Setting Up with Claude Desktop
@@ -227,8 +235,6 @@ print(f"Exit code: {result['exit_code']}")
 ## Development
 
 ### Tests
-
-This repository does not currently ship a `tests/` suite. `pyproject.toml` is configured for pytest if you add one:
 
 ```bash
 pytest
