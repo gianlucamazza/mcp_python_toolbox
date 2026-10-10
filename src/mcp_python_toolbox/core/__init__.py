@@ -1,8 +1,8 @@
 """
 Core functionality for the MCP Python Toolbox.
 
-This package provides essential tools for Python project management and code analysis:
-- FileOperations: Safe file system operations within a workspace
+This package provides tools for Python project management and code analysis:
+- FileOperations: File system operations scoped to a workspace
 - CodeAnalyzer: Python code analysis and formatting tools
 - ProjectManager: Virtual environment and dependency management
 """

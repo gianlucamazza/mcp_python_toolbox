@@ -1,4 +1,4 @@
-"""Module for safe file operations within a workspace directory."""
+"""Module for file operations scoped to a workspace directory."""
 
 import os
 from pathlib import Path
@@ -7,11 +7,11 @@ from typing import Union, List, Dict, Optional, Any
 class FileOperations:
     """Manages file operations within a workspace directory.
 
-    This class provides safe file operations that are restricted to a specific
-    workspace directory. It prevents operations outside the workspace root for
-    security and includes functionality for:
+    Paths are resolved and rejected if they fall outside the workspace root.
+    That check applies only to these file helpers; it is not a sandbox.
+    Includes:
     - Reading and writing files
-    - Creating and deleting files and directories
+    - Creating directories and deleting files
     - Listing directory contents
     - Path validation
 
@@ -36,7 +36,7 @@ class FileOperations:
         """Validate and resolve a path within the workspace.
 
         Ensures that the given path resolves to a location within the workspace root
-        directory to prevent unauthorized access to files outside the workspace.
+        directory. Paths outside the workspace raise ``ValueError``.
 
         Args:
             path: The path to validate, relative to workspace root
