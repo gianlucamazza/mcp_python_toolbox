@@ -8,12 +8,14 @@ from typing import Union, List, Dict, Optional, Any
 def validate_workspace_path(workspace_root: Union[str, Path], path: Union[str, Path]) -> Path:
     """Resolve a path and reject it if it falls outside the workspace root.
 
-    ``path`` is joined to ``workspace_root`` (absolute ``path`` values replace
-    the root, per ``pathlib``) and then resolved, which follows symlinks. The
-    resolved location must still sit under ``workspace_root``.
+    ``workspace_root`` is resolved first. ``path`` is joined to that root
+    (absolute ``path`` values replace the root, per ``pathlib``) and then
+    resolved, which follows symlinks. Containment is ``resolved == root`` or
+    ``root in resolved.parents``, not a string-prefix check (so ``/tmp/ws``
+    does not accept ``/tmp/ws-evil``).
 
     Args:
-        workspace_root: Workspace root directory. Callers should pass a resolved path.
+        workspace_root: Workspace root directory (resolved inside this helper).
         path: Path to validate, relative to the workspace root or absolute.
 
     Returns:
@@ -22,9 +24,9 @@ def validate_workspace_path(workspace_root: Union[str, Path], path: Union[str, P
     Raises:
         ValueError: If the path resolves to a location outside the workspace root.
     """
-    root = Path(workspace_root)
+    root = Path(workspace_root).resolve()
     resolved_path = (root / Path(path)).resolve()
-    if not str(resolved_path).startswith(str(root)):
+    if resolved_path != root and root not in resolved_path.parents:
         raise ValueError(f"Path {path} is outside workspace root")
     return resolved_path
 

@@ -14,6 +14,8 @@ from mcp_python_toolbox.core.code_executor import (
     CodeExecutor,
     resolve_timeout,
 )
+from mcp_python_toolbox.core.file_operations import FileOperations
+from tests.conftest import make_venv_workspace
 
 SLEEP_WITH_GRANDCHILD = """
 import os
@@ -112,6 +114,40 @@ def test_symlink_escape_rejected(workspace: Path, executor: CodeExecutor) -> Non
     link.symlink_to(outside)
     with pytest.raises(ValueError, match="outside workspace"):
         executor.execute_code("print(1)", working_dir="link_out")
+
+
+def test_sibling_prefix_dir_rejected(tmp_path: Path) -> None:
+    """``ws`` must not treat sibling ``ws-evil`` as inside the workspace."""
+    ws = make_venv_workspace(tmp_path / "ws")
+    evil = tmp_path / "ws-evil"
+    evil.mkdir()
+    (evil / "secret.txt").write_text("stolen")
+
+    executor = CodeExecutor(ws)
+    with pytest.raises(ValueError, match="outside workspace"):
+        executor.execute_code("print(1)", working_dir="../ws-evil")
+    with pytest.raises(ValueError, match="outside workspace"):
+        executor.execute_code("print(1)", working_dir=str(evil))
+
+    file_ops = FileOperations(ws)
+    with pytest.raises(ValueError, match="outside workspace"):
+        file_ops.read_file("../ws-evil/secret.txt")
+    with pytest.raises(ValueError, match="outside workspace"):
+        file_ops.read_file(str(evil / "secret.txt"))
+
+
+def test_absolute_path_inside_workspace_accepted(workspace: Path, executor: CodeExecutor) -> None:
+    inner = workspace / "inner"
+    inner.mkdir()
+    note = inner / "note.txt"
+    note.write_text("inside")
+
+    file_ops = FileOperations(workspace)
+    assert file_ops.read_file(str(note)) == "inside"
+
+    result = executor.execute_code("import os; print(os.getcwd())", working_dir=str(inner))
+    assert result["exit_code"] == 0
+    assert str(inner.resolve()) in result["stdout"]
 
 
 def test_temp_file_removed_on_success(

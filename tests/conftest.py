@@ -11,21 +11,25 @@ import pytest
 from mcp_python_toolbox.core.code_executor import CodeExecutor
 
 
-@pytest.fixture
-def workspace(tmp_path: Path) -> Path:
-    """Temporary workspace with a ``.venv`` interpreter pointing at this Python."""
-    root = tmp_path / "workspace"
-    root.mkdir()
+def make_venv_workspace(root: Path) -> Path:
+    """Create ``root`` with a ``.venv`` interpreter pointing at this Python."""
+    root.mkdir(parents=True, exist_ok=True)
     if os.name == "nt":
         python_dir = root / ".venv" / "Scripts"
-        python_dir.mkdir(parents=True)
         target = python_dir / "python.exe"
     else:
         python_dir = root / ".venv" / "bin"
-        python_dir.mkdir(parents=True)
         target = python_dir / "python"
-    os.symlink(sys.executable, target)
+    python_dir.mkdir(parents=True, exist_ok=True)
+    if not target.exists():
+        os.symlink(sys.executable, target)
     return root
+
+
+@pytest.fixture
+def workspace(tmp_path: Path) -> Path:
+    """Temporary workspace with a ``.venv`` interpreter pointing at this Python."""
+    return make_venv_workspace(tmp_path / "workspace")
 
 
 @pytest.fixture
