@@ -4,6 +4,33 @@ import os
 from pathlib import Path
 from typing import Union, List, Dict, Optional, Any
 
+
+def validate_workspace_path(workspace_root: Union[str, Path], path: Union[str, Path]) -> Path:
+    """Resolve a path and reject it if it falls outside the workspace root.
+
+    ``workspace_root`` is resolved first. ``path`` is joined to that root
+    (absolute ``path`` values replace the root, per ``pathlib``) and then
+    resolved, which follows symlinks. Containment is ``resolved == root`` or
+    ``root in resolved.parents``, not a string-prefix check (so ``/tmp/ws``
+    does not accept ``/tmp/ws-evil``).
+
+    Args:
+        workspace_root: Workspace root directory (resolved inside this helper).
+        path: Path to validate, relative to the workspace root or absolute.
+
+    Returns:
+        Path: The resolved absolute path.
+
+    Raises:
+        ValueError: If the path resolves to a location outside the workspace root.
+    """
+    root = Path(workspace_root).resolve()
+    resolved_path = (root / Path(path)).resolve()
+    if resolved_path != root and root not in resolved_path.parents:
+        raise ValueError(f"Path {path} is outside workspace root")
+    return resolved_path
+
+
 class FileOperations:
     """Manages file operations within a workspace directory.
 
@@ -47,14 +74,14 @@ class FileOperations:
         Raises:
             ValueError: If the path resolves to a location outside the workspace root
         """
-        resolved_path = (self.workspace_root / Path(path)).resolve()
-        if not str(resolved_path).startswith(str(self.workspace_root)):
-            raise ValueError(f"Path {path} is outside workspace root")
-        return resolved_path
+        return validate_workspace_path(self.workspace_root, path)
 
-    def read_file(self, path: Union[str, Path], 
-                  start_line: Optional[int] = None, 
-                  end_line: Optional[int] = None) -> str:
+    def read_file(
+        self,
+        path: Union[str, Path],
+        start_line: Optional[int] = None,
+        end_line: Optional[int] = None,
+    ) -> str:
         """Read contents of a file, optionally between specific lines.
 
         Args:
@@ -73,17 +100,17 @@ class FileOperations:
         file_path = self._validate_path(path)
         if not file_path.is_file():
             raise FileNotFoundError(f"File not found: {path}")
-        
-        with open(file_path, 'r', encoding='utf-8') as f:
+
+        with open(file_path, "r", encoding="utf-8") as f:
             if start_line is None and end_line is None:
                 return f.read()
-            
+
             lines = f.readlines()
             start_idx = (start_line - 1) if start_line else 0
             end_idx = end_line if end_line else len(lines)
-            return ''.join(lines[start_idx:end_idx])
+            return "".join(lines[start_idx:end_idx])
 
-    def write_file(self, path: Union[str, Path], content: str, mode: str = 'w') -> None:
+    def write_file(self, path: Union[str, Path], content: str, mode: str = "w") -> None:
         """Write content to a file.
 
         Creates parent directories if they don't exist. The file will be created
@@ -100,8 +127,8 @@ class FileOperations:
         """
         file_path = self._validate_path(path)
         os.makedirs(file_path.parent, exist_ok=True)
-        
-        with open(file_path, mode, encoding='utf-8') as f:
+
+        with open(file_path, mode, encoding="utf-8") as f:
             f.write(content)
 
     def delete_file(self, path: Union[str, Path]) -> None:
@@ -121,7 +148,7 @@ class FileOperations:
         else:
             raise FileNotFoundError(f"File not found: {path}")
 
-    def list_directory(self, path: Union[str, Path] = '.') -> List[Dict[str, Any]]:
+    def list_directory(self, path: Union[str, Path] = ".") -> List[Dict[str, Any]]:
         """List contents of a directory with metadata.
 
         Args:
@@ -143,17 +170,19 @@ class FileOperations:
         dir_path = self._validate_path(path)
         if not dir_path.is_dir():
             raise NotADirectoryError(f"Not a directory: {path}")
-        
+
         contents = []
         for item in dir_path.iterdir():
             stat = item.stat()
-            contents.append({
-                'name': item.name,
-                'type': 'file' if item.is_file() else 'directory',
-                'size': stat.st_size,
-                'modified': stat.st_mtime,
-                'path': str(item.relative_to(self.workspace_root))
-            })
+            contents.append(
+                {
+                    "name": item.name,
+                    "type": "file" if item.is_file() else "directory",
+                    "size": stat.st_size,
+                    "modified": stat.st_mtime,
+                    "path": str(item.relative_to(self.workspace_root)),
+                }
+            )
         return contents
 
     def create_directory(self, path: Union[str, Path]) -> None:
@@ -167,4 +196,4 @@ class FileOperations:
             OSError: If unable to create the directory
         """
         dir_path = self._validate_path(path)
-        os.makedirs(dir_path, exist_ok=True) 
+        os.makedirs(dir_path, exist_ok=True)
