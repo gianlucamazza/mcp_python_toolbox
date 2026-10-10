@@ -1,4 +1,4 @@
-"""Module for executing Python code in a controlled environment with virtual environment support."""
+"""Module for executing Python code via subprocess using the workspace virtual environment."""
 
 import subprocess
 from pathlib import Path
@@ -7,11 +7,11 @@ import tempfile
 import os
 
 class CodeExecutor:
-    """Manages Python code execution within a virtual environment.
+    """Runs Python snippets with the workspace virtual environment interpreter.
 
-    This class provides functionality to execute Python code snippets in a controlled
-    environment using a project's virtual environment. It handles temporary file creation,
-    execution, and cleanup.
+    Snippets are written to a temporary file and executed with ``subprocess.run``
+    using the project's ``.venv`` Python. This is not a sandbox: the child process
+    has the same OS permissions as the server.
 
     Attributes:
         workspace_root (Path): The root directory of the workspace
@@ -49,9 +49,9 @@ class CodeExecutor:
     def execute_code(self, code: str, working_dir: Optional[str] = None) -> Dict[str, Any]:
         """Execute Python code and return the execution results.
 
-        The code is written to a temporary file and executed using the Python interpreter
-        from the virtual environment. The temporary file is automatically cleaned up
-        after execution.
+        The code is written to a temporary file and executed with ``subprocess.run``
+        using the virtual environment interpreter. The temporary file is cleaned up
+        after execution. There is no sandbox, timeout, or working-directory check.
 
         Args:
             code: The Python code to execute as a string

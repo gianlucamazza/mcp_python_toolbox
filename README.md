@@ -1,25 +1,27 @@
 # MCP Python Toolbox
 
-A Model Context Protocol (MCP) server that provides a comprehensive set of tools for Python development, enabling AI assistants like Claude to effectively work with Python code and projects.
+A local [Model Context Protocol](https://modelcontextprotocol.io) (stdio) server that exposes Python workspace tools to an MCP client such as Claude Desktop: read/write files, analyze/format/lint Python, manage a project `.venv`, and run code.
+
+It is not published to PyPI. It does not sandbox execution. See [Security](#security).
 
 ## Overview
 
-MCP Python Toolbox implements a Model Context Protocol server that gives Claude the ability to perform Python development tasks through a standardized interface. It enables Claude to:
+Start the server against a workspace directory. A connected MCP client can then:
 
-- Read, write, and manage files within a workspace
+- Read, write, and delete files, and list directories, inside that workspace
 - Analyze, format, and lint Python code
-- Manage virtual environments and dependencies
-- Execute Python code safely
+- Create a virtual environment and install dependencies
+- Execute Python snippets on the host
 
 ## Features
 
 ### File Operations (`FileOperations`)
-- Safe file operations within a workspace directory
-- Path validation to prevent unauthorized access outside workspace
-- Read and write files with line-specific operations
-- Create and delete files and directories
-- List directory contents with detailed metadata (size, type, modification time)
-- Automatic parent directory creation when writing files
+- File tools scoped to a workspace directory
+- Paths are resolved and rejected if they fall outside the workspace root
+- Read and write files with line-specific operations (`write_file` creates parent directories)
+- Delete files (`delete_file` does not remove directories)
+- List directory contents with metadata (size, type, modification time)
+- `create_directory` exists on the class but is not registered as an MCP tool
 
 ### Code Analysis (`CodeAnalyzer`)
 - Parse and analyze Python code structure using AST
@@ -31,26 +33,34 @@ MCP Python Toolbox implements a Model Context Protocol server that gives Claude 
 - Format code using:
   - Black (default)
   - PEP8 (using autopep8)
-- Comprehensive code linting using Pylint with detailed reports
+- Lint with Pylint (JSON output, 30s subprocess timeout)
 
 ### Project Management (`ProjectManager`)
-- Create and manage virtual environments with pip support
-- Flexible dependency management:
-  - Install from requirements.txt
-  - Install from pyproject.toml
-  - Support for specific package versions
-- Advanced dependency handling:
-  - Check for version conflicts between packages
-  - List all installed packages with versions
-  - Update packages to specific versions
-  - Generate requirements.txt from current environment
+- Create a workspace `.venv` (`venv.create`, with pip)
+- Install dependencies into that `.venv` via `pip`:
+  - From `requirements.txt`
+  - From `pyproject.toml` `[project.dependencies]`
+- `update_package` / `create_requirements_file` on the class use the `.venv` interpreter (`pip install --upgrade` / `pip freeze`)
+- `list_packages` and `check_conflicts` inspect packages visible to the **running server interpreter** (`importlib.metadata`), not the workspace `.venv`
 
 ### Code Execution (`CodeExecutor`)
-- Execute Python code in a controlled environment
-- Uses project's virtual environment for consistent dependencies
-- Temporary file management for code execution
+- Write the snippet to a temp file and run it with `subprocess`
+- Uses the workspace `.venv` Python if that interpreter exists
 - Capture stdout, stderr, and exit codes
-- Support for custom working directories
+- Optional working directory (not checked against the workspace root)
+- No timeout, resource limits, or isolation
+
+## Security
+
+There is no sandbox. The server and every tool run with the same OS user and permissions as the process that started it. There are no containers, seccomp filters, resource limits, import allowlists, or network restrictions. Use this only with MCP clients and workspaces you trust.
+
+What the code actually enforces:
+
+- `read_file`, `write_file`, `delete_file`, and `list_directory` resolve paths and reject those outside the workspace root. Analyze/lint/format do not use that check.
+- `execute_python` is unsandboxed host execution: a temp `.py` file plus `subprocess.run` on the workspace `.venv` interpreter. The snippet can read or write anywhere that user can, start processes, and use the network. The optional `working_dir` is not workspace-checked.
+- `create_venv` and `install_dependencies` can create `.venv` and install packages into it with pip.
+
+Do not expose the server to untrusted clients, and do not point `--workspace` at a tree you are unwilling to let an assistant modify or execute code from.
 
 ## Installation
 
@@ -197,7 +207,7 @@ pm.update_package("flask", version="2.0.0")  # to specific version
 
 #### Code Execution
 ```python
-from mcp_python_toolbox.core import CodeExecutor
+from mcp_python_toolbox.core.code_executor import CodeExecutor
 
 executor = CodeExecutor(workspace_root="/path/to/project")
 
@@ -216,7 +226,9 @@ print(f"Exit code: {result['exit_code']}")
 
 ## Development
 
-### Running Tests
+### Tests
+
+This repository does not currently ship a `tests/` suite. `pyproject.toml` is configured for pytest if you add one:
 
 ```bash
 pytest
@@ -254,6 +266,5 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Acknowledgments
 
-- Implements the [Model Context Protocol](https://github.com/modelcontextprotocol/servers) specification
-- Built with modern Python development tools and best practices
-- Uses industry-standard formatting (Black) and linting (Pylint) tools
+- MCP server built with the [Python SDK](https://github.com/modelcontextprotocol/python-sdk) (`FastMCP`)
+- Formatting via Black; linting via Pylint (run in a subprocess)
